@@ -1,34 +1,69 @@
-import { useEffect, useState } from 'react';
 import './globals.css';
 
-export default function Page() {
-  const [ethPrice, setEthPrice] = useState(null);
-  const [strategies, setStrategies] = useState([]);
-  const [btc, setBtc] = useState([]);
+// All NFT strategies
+const STRATEGIES = [
+  { name: 'PunkStrategy', coingeckoId: 'cryptopunks' },
+  { name: 'ApeStrategy', coingeckoId: 'bored-ape-yacht-club' },
+  { name: 'PudgyStrategy', coingeckoId: 'pudgy-penguins' },
+  { name: 'VibeStrategy', coingeckoId: 'good-vibes-club' },
+  { name: 'ChimpStrategy', coingeckoId: 'chimpers-nft' },
+  { name: 'MeebitStrategy', coingeckoId: 'meebits' },
+  { name: 'AzukiStrategy', coingeckoId: 'azuki' },
+  { name: 'MoonbirdsStrategy', coingeckoId: 'moonbirds' }
+];
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+// BTC treasury
+const BTC_COMPANIES = [
+  { name: 'MicroStrategy', btcHoldings: 687410 }
+];
 
-  async function fetchData() {
-    // ETH price
-    const ethData = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd')
-      .then(res => res.json());
-    setEthPrice(ethData.ethereum.usd);
+// Server-side fetch helper
+async function fetchEthPrice() {
+  const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+  const data = await res.json();
+  return data.ethereum.usd;
+}
 
-    // Strategies
-    const strategyData = await fetch('/api/strategies').then(res => res.json());
-    setStrategies(strategyData);
+async function fetchBtcPrice() {
+  const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+  const data = await res.json();
+  return data.bitcoin.usd;
+}
 
-    // BTC treasury
-    const btcData = await fetch('/api/btc').then(res => res.json());
-    setBtc(btcData);
-  }
+async function fetchStrategyData() {
+  return Promise.all(
+    STRATEGIES.map(async (s) => {
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/nfts/${s.coingeckoId}`);
+        const data = await res.json();
+        const floor = data.floor_price?.native_currency || 0;
+        const holders = data.number_of_unique_addresses_holding || 10;
+        return { ...s, floor, holders };
+      } catch {
+        return { ...s, floor: 0, holders: 10 };
+      }
+    })
+  );
+}
+
+export default async function Page() {
+  const [ethPrice, btcPrice, strategies] = await Promise.all([
+    fetchEthPrice(),
+    fetchBtcPrice(),
+    fetchStrategyData()
+  ]);
+
+  // Add BTC values
+  const btcCompanies = BTC_COMPANIES.map(c => ({
+    ...c,
+    btcPrice,
+    btcValue: c.btcHoldings * btcPrice
+  }));
 
   return (
     <div style={{ padding: 20 }}>
       <h1>Strategy Token mNAV Tracker</h1>
-      <p>Live ETH Price: {ethPrice ? `$${ethPrice}` : 'Loading...'}</p>
+      <p>Live ETH Price: ${ethPrice}</p>
 
       <h2>Strategies</h2>
       <table>
@@ -41,16 +76,14 @@ export default function Page() {
           </tr>
         </thead>
         <tbody>
-          {strategies.length === 0 ? <tr><td colSpan="4">Loading...</td></tr> :
-            strategies.map(s => (
-              <tr key={s.name}>
-                <td>{s.name}</td>
-                <td>{s.holders}</td>
-                <td>{s.floor ? s.floor + ' Ξ' : 'N/A'}</td>
-                <td>{s.floor && ethPrice ? `$${(s.floor * ethPrice * s.holders).toFixed(0)}` : 'N/A'}</td>
-              </tr>
-            ))
-          }
+          {strategies.map(s => (
+            <tr key={s.name}>
+              <td>{s.name}</td>
+              <td>{s.holders}</td>
+              <td>{s.floor} Ξ</td>
+              <td>${(s.floor * ethPrice * s.holders).toLocaleString()}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
@@ -65,16 +98,14 @@ export default function Page() {
           </tr>
         </thead>
         <tbody>
-          {btc.length === 0 ? <tr><td colSpan="4">Loading BTC data…</td></tr> :
-            btc.map(c => (
-              <tr key={c.name}>
-                <td>{c.name}</td>
-                <td>{c.btcHoldings}</td>
-                <td>${c.btcPrice}</td>
-                <td>${c.btcValue.toLocaleString()}</td>
-              </tr>
-            ))
-          }
+          {btcCompanies.map(c => (
+            <tr key={c.name}>
+              <td>{c.name}</td>
+              <td>{c.btcHoldings}</td>
+              <td>${c.btcPrice}</td>
+              <td>${c.btcValue.toLocaleString()}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
